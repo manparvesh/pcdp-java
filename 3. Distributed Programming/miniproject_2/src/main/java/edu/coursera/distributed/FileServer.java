@@ -1,12 +1,14 @@
 package edu.coursera.distributed;
 
-import java.net.ServerSocket;
-import java.net.Socket;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.File;
+import java.io.PrintStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A basic and very limited implementation of a file server that responds to GET
@@ -17,8 +19,8 @@ public final class FileServer {
      * Main entrypoint for the basic file server.
      *
      * @param socket Provided socket to accept connections on.
-     * @param fs A proxy filesystem to serve files from. See the PCDPFilesystem
-     *           class for more detailed documentation of its usage.
+     * @param fs     A proxy filesystem to serve files from. See the PCDPFilesystem
+     *               class for more detailed documentation of its usage.
      * @throws IOException If an I/O error is detected on the server. This
      *                     should be a fatal error, your file server
      *                     implementation is not expected to ever throw
@@ -32,10 +34,10 @@ public final class FileServer {
          */
         while (true) {
 
-            // TODO Delete this once you start working on your solution.
-            throw new UnsupportedOperationException();
-
             // TODO 1) Use socket.accept to get a Socket object
+            Socket connection = socket.accept();
+            InputStream inputStream = connection.getInputStream();
+            OutputStream outputStream = connection.getOutputStream();
 
             /*
              * TODO 2) Using Socket.getInputStream(), parse the received HTTP
@@ -46,6 +48,12 @@ public final class FileServer {
              *
              *     GET /path/to/file HTTP/1.1
              */
+            String fileName = parseFileNameFromInputStream(inputStream);
+            if (fileName == null) {
+                reply404(outputStream);
+            } else {
+                serveFile(fileName, fs, outputStream);
+            }
 
             /*
              * TODO 3) Using the parsed path to the target file, construct an
@@ -67,6 +75,52 @@ public final class FileServer {
              *
              * Don't forget to close the output stream.
              */
+            inputStream.close();
+            outputStream.flush();
+            outputStream.close();
+            connection.close();
         }
+    }
+
+    private void serveFile(String filename, final PCDPFilesystem fs, OutputStream output) {
+        final String contents = fs.readFile(new PCDPPath(filename));
+        if (null == contents) {
+            reply404(output);
+        } else {
+            final PrintStream printer = new PrintStream(output);
+
+            printer.print("HTTP/1.0 200 OK\r\n");
+            printer.print("Server: FileServer\r\n");
+            printer.print("Content-Length: " + contents.length() + "\r\n");
+            printer.print("\r\n");
+            printer.print(contents);
+            printer.print("\r\n");
+
+            printer.flush();
+            printer.close();
+        }
+    }
+
+    private void reply404(OutputStream output) {
+        final PrintStream printer = new PrintStream(output);
+
+        printer.print("HTTP/1.0 404 Not Found\r\n");
+        printer.print("Server: FileServer\r\n");
+        printer.print("\r\n");
+
+        printer.close();
+    }
+
+    private String parseFileNameFromInputStream(InputStream input) {
+        Scanner scanner = new Scanner(input).useDelimiter("\\r\\n");
+        String line = scanner.next();
+
+        Pattern pattern = Pattern.compile("GET (.+) HTTP/\\d.\\d");
+        Matcher matcher = pattern.matcher(line);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        return matcher.group(1);
     }
 }
